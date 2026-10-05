@@ -147,14 +147,22 @@ function getFrequenciesWithLoads() {
  */
 function addFrequencyRow() {
 	const tbody = document.getElementById('freqTableBody');
+	if (!tbody) return;
+
 	const row = document.createElement('tr');
 	row.className = 'freq-input-row';
 	row.innerHTML = `
 		<td><input type="number" class="freq-input" placeholder="e.g., 100" step="any"></td>
 		<td><input type="number" class="resistance-input" placeholder="e.g., 50" step="any"></td>
 		<td><input type="number" class="reactance-input" placeholder="e.g., 0" step="any"></td>
-		<td><button type="button" class="remove-btn" onclick="removeFrequencyRow(this)">Remove</button></td>
+		<td><button type="button" class="remove-btn" data-remove-frequency>Remove</button></td>
 	`;
+
+	const removeBtn = row.querySelector('[data-remove-frequency]');
+	if (removeBtn) {
+		removeBtn.addEventListener('click', () => removeFrequencyRow(removeBtn));
+	}
+
 	tbody.appendChild(row);
 }
 
@@ -169,23 +177,29 @@ function addSectionRow() {
 	const sectionNumber = Math.floor(existingRows / 2) + 1;
 
 	const row1 = document.createElement('tr');
+	row1.dataset.section = String(sectionNumber);
 	row1.innerHTML = `
 		<td rowspan="2">${sectionNumber}</td>
 		<td>Line1</td>
-		<td><input type="number" class="line1LengthMin" value="0" step="any" min="0"></td>
-		<td><input type="number" class="line1LengthMax" value="50" step="any" min="0"></td>
-		<td><input type="number" class="line1RoMin" value="10" step="any" min="0"></td>
-		<td><input type="number" class="line1RoMax" value="100" step="any" min="0"></td>
-		<td rowspan="2"><button type="button" onclick="removeSectionRow(this)" class="remove-btn">Remove</button></td>
+		<td><input type="number" data-section-field="line1-length-min" value="0" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line1-length-max" value="50" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line1-ro-min" value="10" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line1-ro-max" value="100" step="any" min="0"></td>
+		<td rowspan="2"><button type="button" class="remove-btn" data-remove-section>Remove</button></td>
 	`;
+	const removeSectionBtn = row1.querySelector('[data-remove-section]');
+	if (removeSectionBtn) {
+		removeSectionBtn.addEventListener('click', () => removeSectionRow(removeSectionBtn));
+	}
 
 	const row2 = document.createElement('tr');
+	row2.dataset.section = String(sectionNumber);
 	row2.innerHTML = `
 		<td>Line2</td>
-		<td><input type="number" class="line2LengthMin" value="0" step="any" min="0"></td>
-		<td><input type="number" class="line2LengthMax" value="200" step="any" min="0"></td>
-		<td><input type="number" class="line2RoMin" value="10" step="any" min="0"></td>
-		<td><input type="number" class="line2RoMax" value="100" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line2-length-min" value="0" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line2-length-max" value="200" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line2-ro-min" value="10" step="any" min="0"></td>
+		<td><input type="number" data-section-field="line2-ro-max" value="100" step="any" min="0"></td>
 	`;
 
 	tbody.appendChild(row1);
@@ -193,7 +207,7 @@ function addSectionRow() {
 }
 
 function removeSectionRow(button) {
-	const row = button.closest('tr');
+	const row = button && button.closest ? button.closest('tr') : null;
 	if (!row) return;
 
 	const nextRow = row.nextElementSibling;
@@ -215,8 +229,14 @@ function removeSectionRow(button) {
  * Remove a frequency row from the table
  */
 function removeFrequencyRow(button) {
-	const row = button.closest('tr');
+	const row = button && button.closest ? button.closest('tr') : null;
+	if (!row) return;
 	row.remove();
+
+	const remainingRows = document.querySelectorAll('#freqTableBody .freq-input-row');
+	if (remainingRows.length === 0) {
+		addFrequencyRow();
+	}
 }
 
 /**
@@ -226,24 +246,20 @@ function calculateVSWR() {
 	// Get input values
 	const feedingImpedanceInput = parseFloat(document.getElementById('feedingImpedance')?.value);
 
-	// Validation
 	if (isNaN(feedingImpedanceInput) || feedingImpedanceInput <= 0) {
 		alert('Please enter a valid feeding line characteristic impedance');
 		return;
 	}
 
-	// Get frequencies with loads
 	const frequenciesWithLoads = getFrequenciesWithLoads();
 	if (frequenciesWithLoads.length === 0) {
 		alert('Please enter at least one frequency with resistance and reactance values');
 		return;
 	}
-	// feeding line characteristic impedance (measurement/reference) - named Ro_feed
+
 	const Ro_feed = new Complex(feedingImpedanceInput, 0);
-	// velocity factor
 	const vFactorInput = parseFloat(document.getElementById('velocityFactor')?.value);
 	const velocityFactor = (!isNaN(vFactorInput) && vFactorInput > 0) ? vFactorInput : 1.0;
-	// Read sections table and choose one random set of parameters per section (used for all frequencies)
 	const sectionRows = document.querySelectorAll('#sectionsBody tr');
 	const sections = [];
 
@@ -257,66 +273,45 @@ function calculateVSWR() {
 	for (let i = 0; i < sectionRows.length; i += 2) {
 		const row1 = sectionRows[i];
 		const row2 = sectionRows[i + 1] || sectionRows[i];
+		if (!row1) continue;
 
-		const line1LenMin = parseFloat(row1.querySelector('.line1LengthMin')?.value);
-		const line1LenMax = parseFloat(row1.querySelector('.line1LengthMax')?.value);
-		const line1RoMin = parseFloat(row1.querySelector('.line1RoMin')?.value);
-		const line1RoMax = parseFloat(row1.querySelector('.line1RoMax')?.value);
+		const line1LenMin = parseFloat(row1.querySelector('[data-section-field="line1-length-min"]')?.value);
+		const line1LenMax = parseFloat(row1.querySelector('[data-section-field="line1-length-max"]')?.value);
+		const line1RoMin = parseFloat(row1.querySelector('[data-section-field="line1-ro-min"]')?.value);
+		const line1RoMax = parseFloat(row1.querySelector('[data-section-field="line1-ro-max"]')?.value);
 
-		const line2LenMin = parseFloat(row2.querySelector('.line2LengthMin')?.value);
-		const line2LenMax = parseFloat(row2.querySelector('.line2LengthMax')?.value);
-		const line2RoMin = parseFloat(row2.querySelector('.line2RoMin')?.value);
-		const line2RoMax = parseFloat(row2.querySelector('.line2RoMax')?.value);
+		const line2LenMin = parseFloat(row2.querySelector('[data-section-field="line2-length-min"]')?.value);
+		const line2LenMax = parseFloat(row2.querySelector('[data-section-field="line2-length-max"]')?.value);
+		const line2RoMin = parseFloat(row2.querySelector('[data-section-field="line2-ro-min"]')?.value);
+		const line2RoMax = parseFloat(row2.querySelector('[data-section-field="line2-ro-max"]')?.value);
+
+		const line1Length_mm = randRange(line1LenMin, line1LenMax);
+		const line2Length_mm = randRange(line2LenMin, line2LenMax);
+		const line1Ro = randRange(line1RoMin, line1RoMax);
+		const line2Ro = randRange(line2RoMin, line2RoMax);
 
 		sections.push({
-			stubLen_mm: randRange(line1LenMin, line1LenMax),
-			mainLen_mm: randRange(line2LenMin, line2LenMax),
-			stubRo: randRange(line1RoMin, line1RoMax),
-			mainRo: randRange(line2RoMin, line2RoMax)
+			sectionNumber: sections.length + 1,
+			stubLen_mm: line1Length_mm,
+			mainLen_mm: line2Length_mm,
+			stubRo: line1Ro,
+			mainRo: line2Ro,
+			line1Length_mm: line1Length_mm,
+			line1Ro: line1Ro,
+			line2Length_mm: line2Length_mm,
+			line2Ro: line2Ro
 		});
 	}
-			function addSectionRow() {
-	// Log chosen parameters per section
-				const existingRows = tbody.querySelectorAll('tr').length;
-				const sectionNumber = Math.floor(existingRows / 2) + 1;
 
-				const row1 = document.createElement('tr');
-				row1.innerHTML = `
-					<td rowspan="2">${sectionNumber}</td>
-					<td>Line1</td>
-					<td><input type="number" class="stubLenMin" value="0" step="any" min="0"></td>
-					<td><input type="number" class="stubLenMax" value="50" step="any" min="0"></td>
-					<td><input type="number" class="stubRoMin" value="10" step="any" min="0"></td>
-					<td><input type="number" class="stubRoMax" value="100" step="any" min="0"></td>
-					<td></td>
-					<td></td>
-					<td></td>
-					<td rowspan="2"><button type="button" onclick="removeSectionRow(this)" class="remove-btn">Remove</button></td>
-				`;
+	const results = [];
 
-				const row2 = document.createElement('tr');
-				row2.innerHTML = `
-					<td>Line2</td>
-					<td><input type="number" class="mainLenMin" value="0" step="any" min="0"></td>
-					<td><input type="number" class="mainLenMax" value="200" step="any" min="0"></td>
-					<td><input type="number" class="mainRoMin" value="10" step="any" min="0"></td>
-					<td><input type="number" class="mainRoMax" value="100" step="any" min="0"></td>
-					<td></td>
-					<td></td>
-					<td></td>
-				`;
-
-				tbody.appendChild(row1);
-				tbody.appendChild(row2);
-		// compute stub input impedance for a shorted stub of length Lstub
-		// Z_stub_input = j * Z0 * tan(beta * Lstub)
-		// where beta = 2*pi*f / v_p, v_p = c * velocityFactor
-		const c = 299792458; // speed of light m/s
+	frequenciesWithLoads.forEach(item => {
+		let Zcurrent = new Complex(item.resistance, item.reactance);
+		const c = 299792458;
 		const freqHz = item.frequency * 1e6;
 		const vp = c * velocityFactor;
-		const beta = 2 * Math.PI * freqHz / vp; // rad/m
+		const beta = 2 * Math.PI * freqHz / vp;
 
-		// Process sections in order, using chosen parameters per section
 		function parallel(Za, Zb) {
 			return Za.multiply(Zb).divide(Za.add(Zb));
 		}
@@ -325,28 +320,19 @@ function calculateVSWR() {
 			const Lstub = (isNaN(s.stubLen_mm) ? 0 : s.stubLen_mm) / 1000.0;
 			const tan_stub = Math.tan(beta * Lstub);
 			const Ro_stub_input = new Complex(0, s.stubRo * tan_stub);
-
 			const Zcombined = parallel(Zcurrent, Ro_stub_input);
 
 			const Lmain = (isNaN(s.mainLen_mm) ? 0 : s.mainLen_mm) / 1000.0;
 			const tan_main = Math.tan(beta * Lmain);
-
 			const Ro_main = new Complex(s.mainRo, 0);
 			const denom_alt = Ro_main.add(Zcombined.multiply(new Complex(0, tan_main)));
 			const numer_alt = Zcombined.add(new Complex(0, Ro_main.real * tan_main));
 			const Zin_section = Ro_main.multiply(numer_alt).divide(denom_alt);
-
-			// The output of this section becomes the input load for next
 			Zcurrent = Zin_section;
 		});
 
-		// After all sections, Zcurrent is the final input impedance seen at feed for this frequency
 		const Zin = Zcurrent;
 		const vswr_data = calculateVSWRfromImpedance(Zin, Ro_feed);
-
-		try {
-			console.log(`Final Zin at feed (${item.frequency} MHz): ${Zin.toDisplayString()} [${Zin.real.toFixed(4)} + j${Zin.imag.toFixed(4)}]`);
-		} catch (e) {}
 
 		results.push({
 			frequency: item.frequency,
@@ -356,16 +342,23 @@ function calculateVSWR() {
 			vswr: vswr_data.vswr_string,
 			vswr_value: vswr_data.vswr
 		});
-	};
+	});
 
-	// Compute and log maximum VSWR to console
 	try {
+		if (Array.isArray(sections) && sections.length > 0) {
+			console.log('Selected section values:');
+			sections.forEach(section => {
+				console.log(`Section ${section.sectionNumber}: Line1 = ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω | Line2 = ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω`);
+			});
+		}
+
 		if (results.length > 0) {
 			let maxR = results[0];
 			for (let i = 1; i < results.length; i++) {
 				if (results[i].vswr_value > maxR.vswr_value) maxR = results[i];
 			}
 			console.log('Max VSWR:', maxR.vswr, ' (numeric:', Number(maxR.vswr_value.toFixed(4)), ')');
+			console.log('Zin (next Zload):', maxR.load_impedance.toDisplayString(), `[${maxR.load_impedance.real.toFixed(4)} + j${maxR.load_impedance.imag.toFixed(4)}]`);
 		} else {
 			console.log('Max VSWR: N/A');
 		}
@@ -373,37 +366,38 @@ function calculateVSWR() {
 		// ignore console errors
 	}
 
-	// Display results, pass chosen random parameters so displayResults can show them
-	displayResults(results, {
-		line1Length_mm: line1Length_mm,
-		line1Z0_input: line1Z0_input,
-		line2Length_mm: line2Length_mm,
-		line2Z0_input: line2Z0_input
-	});
+	displayResults(results, sections);
 }
 
 /**
- * Display results in the table - shows only the maximum VSWR
+ * Display results in the table - shows the actual chosen values for every section and the maximum VSWR summary
  */
-function displayResults(results, chosen) {
+function displayResults(results, sections) {
 	const resultsBody = document.getElementById('resultsBody');
-function removeSectionRow(button) {
+	if (!resultsBody) return;
 
-	const next = row.nextElementSibling;
-	if (next) next.remove();
-	row.remove();
-	// Renumber remaining sections
-	const rows = document.querySelectorAll('#sectionsBody tr');
-	for (let i = 0; i < rows.length; i += 2) {
-		const sectionIndex = Math.floor(i / 2) + 1;
-		const firstCell = rows[i].querySelector('td');
-		if (firstCell) firstCell.textContent = `${sectionIndex}`;
-	}
+	if (!results || results.length === 0) {
 		resultsBody.innerHTML = '<tr><td colspan="2" class="no-results">No results to display</td></tr>';
 		return;
 	}
 
-	// Find result with maximum VSWR
+	resultsBody.innerHTML = '';
+
+	if (Array.isArray(sections) && sections.length > 0) {
+		const sectionHeader = document.createElement('tr');
+		sectionHeader.innerHTML = '<td colspan="2"><strong>Chosen section values</strong></td>';
+		resultsBody.appendChild(sectionHeader);
+
+		sections.forEach(section => {
+			const row = document.createElement('tr');
+			row.innerHTML = `
+				<td>Section ${section.sectionNumber}</td>
+				<td>Line1: ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω<br>Line2: ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω</td>
+			`;
+			resultsBody.appendChild(row);
+		});
+	}
+
 	let maxResult = results[0];
 	let maxVSWRValue = maxResult.vswr_value;
 
@@ -414,24 +408,10 @@ function removeSectionRow(button) {
 		}
 	}
 
-	// Display only the maximum VSWR result
-	// Build results: line parameters and maximum VSWR
-	// Display the randomly chosen parameters (received from calculateVSWR)
-	const line1Len = (chosen && typeof chosen.line1Length_mm !== 'undefined') ? `${chosen.line1Length_mm.toFixed(3)}` : '0';
-	const line1Z0 = (chosen && typeof chosen.line1Z0_input !== 'undefined') ? `${chosen.line1Z0_input.toFixed(3)}` : '0';
-	const line2Len = (chosen && typeof chosen.line2Length_mm !== 'undefined') ? `${chosen.line2Length_mm.toFixed(3)}` : '0';
-	const line2Z0 = (chosen && typeof chosen.line2Z0_input !== 'undefined') ? `${chosen.line2Z0_input.toFixed(3)}` : '0';
+	const summaryHeader = document.createElement('tr');
+	summaryHeader.innerHTML = '<td colspan="2"><strong>Maximum VSWR summary</strong></td>';
+	resultsBody.appendChild(summaryHeader);
 
-	const items = [
-		{p: 'Length1 (mm)', v: `${parseFloat(line1Len).toFixed(2)}`},
-		{p: 'Ro1 (Ω)', v: `${parseFloat(line1Z0).toFixed(2)}`},
-		{p: 'Length2 (mm)', v: `${parseFloat(line2Len).toFixed(2)}`},
-		{p: 'Ro2 (Ω)', v: `${parseFloat(line2Z0).toFixed(2)}`},
-		{p: 'Zin (next Zload)', v: `${maxResult.load_impedance.toDisplayString()}`},
-		{p: 'Maximum VSWR', v: `${maxResult.vswr}`},
-	];
-
-	// Compute mismatch loss (dB) from max gamma magnitude: Mismatch Loss = -10*log10(1 - |Γ|^2)
 	const gamma_mag = maxResult.gamma_mag || 0;
 	let mismatchLoss = '0.00';
 	if (gamma_mag >= 1) {
@@ -440,7 +420,11 @@ function removeSectionRow(button) {
 		const ml = -10 * Math.log10(1 - gamma_mag * gamma_mag);
 		mismatchLoss = `${ml.toFixed(2)} dB`;
 	}
-	items.push({p: 'Mismatch Loss', v: mismatchLoss});
+
+	const items = [
+		{p: 'Maximum VSWR', v: `${maxResult.vswr}`},
+		{p: 'Mismatch Loss', v: mismatchLoss}
+	];
 
 	items.forEach(it => {
 		const r = document.createElement('tr');
