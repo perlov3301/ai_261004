@@ -345,22 +345,13 @@ function calculateVSWR() {
 	});
 
 	try {
-		// Print frequencies and corresponding computed Zload before section parameters
-		if (results.length > 0) {
-			console.log('Frequencies and corresponding Zload:');
-			results.forEach(r => {
-				const z = r.load_impedance;
-				console.log(`Freq ${r.frequency} MHz: ${z.toDisplayString()} [${z.real.toFixed(4)} + j${z.imag.toFixed(4)}] VSWR: ${r.vswr}`);
-			});
-		} else {
-			console.log('No frequency results to display');
-		}
 		if (Array.isArray(sections) && sections.length > 0) {
 			console.log('Selected section values:');
 			sections.forEach(section => {
 				console.log(`Section ${section.sectionNumber}: Line1 = ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω | Line2 = ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω`);
 			});
 		}
+
 		if (results.length > 0) {
 			let maxR = results[0];
 			for (let i = 1; i < results.length; i++) {
