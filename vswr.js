@@ -242,33 +242,16 @@ function removeFrequencyRow(button) {
 /**
  * Main calculation function - Updated to use frequency-specific loads
  */
-function calculateVSWR() {
-	// Get input values
-	const feedingImpedanceInput = parseFloat(document.getElementById('feedingImpedance')?.value);
+function randRange(min, max) {
+	const mn = isNaN(min) ? 0 : min;
+	const mx = isNaN(max) ? mn : max;
+	if (mx < mn) return mn;
+	return mn + Math.random() * (mx - mn);
+}
 
-	if (isNaN(feedingImpedanceInput) || feedingImpedanceInput <= 0) {
-		alert('Please enter a valid feeding line characteristic impedance');
-		return;
-	}
-
-	const frequenciesWithLoads = getFrequenciesWithLoads();
-	if (frequenciesWithLoads.length === 0) {
-		alert('Please enter at least one frequency with resistance and reactance values');
-		return;
-	}
-
-	const Ro_feed = new Complex(feedingImpedanceInput, 0);
-	const vFactorInput = parseFloat(document.getElementById('velocityFactor')?.value);
-	const velocityFactor = (!isNaN(vFactorInput) && vFactorInput > 0) ? vFactorInput : 1.0;
+function buildRandomSections() {
 	const sectionRows = document.querySelectorAll('#sectionsBody tr');
 	const sections = [];
-
-	function randRange(min, max) {
-		const mn = isNaN(min) ? 0 : min;
-		const mx = isNaN(max) ? mn : max;
-		if (mx < mn) return mn;
-		return mn + Math.random() * (mx - mn);
-	}
 
 	for (let i = 0; i < sectionRows.length; i += 2) {
 		const row1 = sectionRows[i];
@@ -303,6 +286,10 @@ function calculateVSWR() {
 		});
 	}
 
+	return sections;
+}
+
+function evaluateSectionsForLoads(sections, frequenciesWithLoads, Ro_feed, velocityFactor) {
 	const results = [];
 
 	frequenciesWithLoads.forEach(item => {
@@ -344,101 +331,131 @@ function calculateVSWR() {
 		});
 	});
 
-	try {
-		// Print frequencies and corresponding computed Zload before section parameters
-		if (results.length > 0) {
-			console.log('Frequencies and corresponding Zload:');
-			results.forEach(r => {
-				const z = r.load_impedance;
-				console.log(`Freq ${r.frequency} MHz: ${z.toDisplayString()} [${z.real.toFixed(4)} + j${z.imag.toFixed(4)}] VSWR: ${r.vswr}`);
-			});
-		} else {
-			console.log('No frequency results to display');
+	let worstResult = results[0] || null;
+	for (let i = 1; i < results.length; i++) {
+		if (results[i].vswr_value > worstResult.vswr_value) {
+			worstResult = results[i];
 		}
-		if (Array.isArray(sections) && sections.length > 0) {
-			console.log('Selected section values:');
-			sections.forEach(section => {
-				console.log(`Section ${section.sectionNumber}: Line1 = ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω | Line2 = ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω`);
-			});
-		}
-		if (results.length > 0) {
-			let maxR = results[0];
-			for (let i = 1; i < results.length; i++) {
-				if (results[i].vswr_value > maxR.vswr_value) maxR = results[i];
-			}
-			console.log('Max VSWR:', maxR.vswr, ' (numeric:', Number(maxR.vswr_value.toFixed(4)), ')');
-			console.log('Zin (next Zload):', maxR.load_impedance.toDisplayString(), `[${maxR.load_impedance.real.toFixed(4)} + j${maxR.load_impedance.imag.toFixed(4)}]`);
-		} else {
-			console.log('Max VSWR: N/A');
-		}
-	} catch (e) {
-		// ignore console errors
 	}
 
-	displayResults(results, sections);
+	return { results, worstResult };
+}
+
+let bestSolutionsHistory = [];
+
+function calculateVSWR() {
+	const feedingImpedanceInput = parseFloat(document.getElementById('feedingImpedance')?.value);
+
+	if (isNaN(feedingImpedanceInput) || feedingImpedanceInput <= 0) {
+		alert('Please enter a valid feeding line characteristic impedance');
+		return;
+	}
+
+	const frequenciesWithLoads = getFrequenciesWithLoads();
+	if (frequenciesWithLoads.length === 0) {
+		alert('Please enter at least one frequency with resistance and reactance values');
+		return;
+	}
+
+	const Ro_feed = new Complex(feedingImpedanceInput, 0);
+	const vFactorInput = parseFloat(document.getElementById('velocityFactor')?.value);
+	const velocityFactor = (!isNaN(vFactorInput) && vFactorInput > 0) ? vFactorInput : 1.0;
+
+	const maxCycles = 100;
+	let bestCandidate = null;
+
+	for (let cycle = 0; cycle < maxCycles; cycle++) {
+		const sections = buildRandomSections();
+		const evaluation = evaluateSectionsForLoads(sections, frequenciesWithLoads, Ro_feed, velocityFactor);
+		const candidate = {
+			cycle: cycle + 1,
+			sections,
+			results: evaluation.results,
+			worstResult: evaluation.worstResult,
+			worstVSWR: evaluation.worstResult ? evaluation.worstResult.vswr_value : Infinity
+		};
+
+		if (!bestCandidate || candidate.worstVSWR < bestCandidate.worstVSWR) {
+			bestCandidate = candidate;
+		}
+	}
+
+	if (bestCandidate && bestCandidate.worstResult) {
+		bestSolutionsHistory.push({
+			cycle: bestCandidate.cycle,
+			sections: bestCandidate.sections,
+			results: bestCandidate.results,
+			worstResult: bestCandidate.worstResult
+		});
+
+		console.log('Best random RF line set found after 100 cycles:');
+		console.log(`Cycle ${bestCandidate.cycle} -> worst VSWR = ${bestCandidate.worstResult.vswr}`);
+		bestCandidate.sections.forEach(section => {
+			console.log(`Section ${section.sectionNumber}: Line1 = ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω | Line2 = ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω`);
+		});
+		console.log('Per-frequency Zin and VSWR for the best solution:');
+		bestCandidate.results.forEach(r => {
+			const z = r.load_impedance;
+			console.log(`Freq ${r.frequency} MHz: Zin = ${z.toDisplayString()} Ω, VSWR = ${r.vswr}`);
+		});
+	}
+
+	displayResults(bestSolutionsHistory);
 }
 
 /**
  * Display results in the table - shows the actual chosen values for every section and the maximum VSWR summary
  */
-function displayResults(results, sections) {
+function displayResults(history) {
 	const resultsBody = document.getElementById('resultsBody');
 	if (!resultsBody) return;
 
-	if (!results || results.length === 0) {
+	if (!Array.isArray(history) || history.length === 0) {
 		resultsBody.innerHTML = '<tr><td colspan="2" class="no-results">No results to display</td></tr>';
 		return;
 	}
 
 	resultsBody.innerHTML = '';
 
-	if (Array.isArray(sections) && sections.length > 0) {
-		const sectionHeader = document.createElement('tr');
-		sectionHeader.innerHTML = '<td colspan="2"><strong>Chosen section values</strong></td>';
-		resultsBody.appendChild(sectionHeader);
+	history.forEach((entry, index) => {
+		const setHeader = document.createElement('tr');
+		setHeader.innerHTML = `<td colspan="2"><strong>Best RF line set ${index + 1}</strong></td>`;
+		resultsBody.appendChild(setHeader);
 
-		sections.forEach(section => {
-			const row = document.createElement('tr');
-			row.innerHTML = `
-				<td>Section ${section.sectionNumber}</td>
-				<td>Line1: ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω<br>Line2: ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω</td>
-			`;
-			resultsBody.appendChild(row);
-		});
-	}
-
-	let maxResult = results[0];
-	let maxVSWRValue = maxResult.vswr_value;
-
-	for (let i = 1; i < results.length; i++) {
-		if (results[i].vswr_value > maxVSWRValue) {
-			maxVSWRValue = results[i].vswr_value;
-			maxResult = results[i];
+		if (Array.isArray(entry.sections) && entry.sections.length > 0) {
+			entry.sections.forEach(section => {
+				const row = document.createElement('tr');
+				row.innerHTML = `
+					<td>Section ${section.sectionNumber}</td>
+					<td>Line1: ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω | Line2: ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω</td>
+				`;
+				resultsBody.appendChild(row);
+			});
 		}
-	}
 
-	const summaryHeader = document.createElement('tr');
-	summaryHeader.innerHTML = '<td colspan="2"><strong>Maximum VSWR summary</strong></td>';
-	resultsBody.appendChild(summaryHeader);
+		const summaryHeader = document.createElement('tr');
+		summaryHeader.innerHTML = '<td colspan="2"><strong>Minimum worst-case VSWR</strong></td>';
+		resultsBody.appendChild(summaryHeader);
 
-	const gamma_mag = maxResult.gamma_mag || 0;
-	let mismatchLoss = '0.00';
-	if (gamma_mag >= 1) {
-		mismatchLoss = '∞';
-	} else {
-		const ml = -10 * Math.log10(1 - gamma_mag * gamma_mag);
-		mismatchLoss = `${ml.toFixed(2)} dB`;
-	}
+		const gamma_mag = entry.worstResult.gamma_mag || 0;
+		let mismatchLoss = '0.00';
+		if (gamma_mag >= 1) {
+			mismatchLoss = '∞';
+		} else {
+			const ml = -10 * Math.log10(1 - gamma_mag * gamma_mag);
+			mismatchLoss = `${ml.toFixed(2)} dB`;
+		}
 
-	const items = [
-		{p: 'Maximum VSWR', v: `${maxResult.vswr}`},
-		{p: 'Mismatch Loss', v: mismatchLoss}
-	];
+		const items = [
+			{p: 'Worst VSWR', v: `${entry.worstResult.vswr}`},
+			{p: 'Mismatch Loss', v: mismatchLoss}
+		];
 
-	items.forEach(it => {
-		const r = document.createElement('tr');
-		r.innerHTML = `<td>${it.p}</td><td>${it.v}</td>`;
-		resultsBody.appendChild(r);
+		items.forEach(it => {
+			const r = document.createElement('tr');
+			r.innerHTML = `<td>${it.p}</td><td>${it.v}</td>`;
+			resultsBody.appendChild(r);
+		});
 	});
 }
 
@@ -446,6 +463,7 @@ function displayResults(results, sections) {
  * Clear results
  */
 function clearResults() {
+	bestSolutionsHistory = [];
 	document.getElementById('resultsBody').innerHTML = 
 		'<tr><td colspan="2" class="no-results">Results will appear here after calculation</td></tr>';
 }
