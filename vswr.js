@@ -341,9 +341,31 @@ function evaluateSectionsForLoads(sections, frequenciesWithLoads, Ro_feed, veloc
 	return { results, worstResult };
 }
 
+const BEST_SOLUTIONS_STORAGE_KEY = 'bestSolutionsHistory_v1';
 let bestSolutionsHistory = [];
 
+function readSavedSolutions() {
+	try {
+		const raw = localStorage.getItem(BEST_SOLUTIONS_STORAGE_KEY);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) ? parsed : [];
+	} catch (e) {
+		console.warn('Saved solutions could not be read:', e);
+		return [];
+	}
+}
+
+function saveBestSolutionsHistory() {
+	try {
+		localStorage.setItem(BEST_SOLUTIONS_STORAGE_KEY, JSON.stringify(bestSolutionsHistory));
+	} catch (e) {
+		console.warn('Saved solutions could not be written:', e);
+	}
+}
+
 function calculateVSWR() {
+	bestSolutionsHistory = readSavedSolutions();
 	const feedingImpedanceInput = parseFloat(document.getElementById('feedingImpedance')?.value);
 
 	if (isNaN(feedingImpedanceInput) || feedingImpedanceInput <= 0) {
@@ -384,9 +406,16 @@ function calculateVSWR() {
 		bestSolutionsHistory.push({
 			cycle: bestCandidate.cycle,
 			sections: bestCandidate.sections,
+			loads: frequenciesWithLoads.map(item => ({
+				frequency: item.frequency,
+				load: { real: item.resistance, imag: item.reactance },
+				zin: bestCandidate.results.find(r => r.frequency === item.frequency)?.load_impedance || null,
+				vswr: bestCandidate.results.find(r => r.frequency === item.frequency)?.vswr || null
+			})),
 			results: bestCandidate.results,
 			worstResult: bestCandidate.worstResult
 		});
+		saveBestSolutionsHistory();
 
 		console.log('Best random RF line set found after 100 cycles:');
 		console.log(`Cycle ${bestCandidate.cycle} -> worst VSWR = ${bestCandidate.worstResult.vswr}`);
@@ -460,8 +489,17 @@ function displayResults(history) {
  */
 function clearResults() {
 	bestSolutionsHistory = [];
+	try {
+		localStorage.removeItem(BEST_SOLUTIONS_STORAGE_KEY);
+	} catch (e) {
+		console.warn('Saved solutions could not be cleared:', e);
+	}
 	document.getElementById('resultsBody').innerHTML = 
 		'<tr><td colspan="2" class="no-results">Results will appear here after calculation</td></tr>';
+}
+
+function clearSavedSolutions() {
+	clearResults();
 }
 
 function clearConsole() {

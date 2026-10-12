@@ -1,0 +1,36 @@
+[
+  {
+    "cycle": 1,
+    "sections": [
+      {
+        "sectionNumber": 1,
+        "line1Ro": 78.82,
+        "line1Length_mm": 76.49,
+        "line2Ro": 56.77,
+        "line2Length_mm": 46.81
+      },
+      {
+        "sectionNumber": 2,
+        "line1Ro": 99.72,
+        "line1Length_mm": 85.04,
+        "line2Ro": 40.08,
+        "line2Length_mm": 71.28
+      }
+    ],
+    "loads": [
+      {
+        "frequency": 1000,
+        "load": { "real": 40, "imag": -50 }
+      },
+      {
+        "frequency": 1250,
+        "load": { "real": 70, "imag": 40 }
+      }
+    ],
+    "worstResult": {
+      "vswr": "1.66",
+      "gamma_mag": 0.247,
+      "mismatchLoss": "0.00 dB"
+    }
+  }
+]
