@@ -427,15 +427,11 @@ function displayResults(history) {
 				const row = document.createElement('tr');
 				row.innerHTML = `
 					<td>Section ${section.sectionNumber}</td>
-					<td>Line1: ${Number(section.line1Length_mm).toFixed(2)} mm, ${Number(section.line1Ro).toFixed(2)} Ω | Line2: ${Number(section.line2Length_mm).toFixed(2)} mm, ${Number(section.line2Ro).toFixed(2)} Ω</td>
+					<td>Line1: ${Number(section.line1Ro).toFixed(2)} Ω, ${Number(section.line1Length_mm).toFixed(2)} mm | Line2: ${Number(section.line2Ro).toFixed(2)} Ω, ${Number(section.line2Length_mm).toFixed(2)} mm</td>
 				`;
 				resultsBody.appendChild(row);
 			});
 		}
-
-		const summaryHeader = document.createElement('tr');
-		summaryHeader.innerHTML = '<td colspan="2"><strong>Minimum worst-case VSWR</strong></td>';
-		resultsBody.appendChild(summaryHeader);
 
 		const gamma_mag = entry.worstResult.gamma_mag || 0;
 		let mismatchLoss = '0.00';
